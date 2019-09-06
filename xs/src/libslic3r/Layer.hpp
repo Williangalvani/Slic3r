@@ -7,6 +7,7 @@
 #include "ExtrusionEntityCollection.hpp"
 #include "ExPolygonCollection.hpp"
 #include "PolylineCollection.hpp"
+#include "NonplanarSurface.hpp"
 #include <boost/thread.hpp>
 
 
@@ -56,6 +57,9 @@ class LayerRegion
     /// (this collection contains only ExtrusionEntityCollection objects)
     ExtrusionEntityCollection fills;
     
+    // Vector of nonplanar_surfaces which are homed in this layer
+    NonplanarSurfaces nonplanar_surfaces;
+
     /// Flow object which provides methods to predict material spacing.
     Flow flow(FlowRole role, bool bridge = false, double width = -1) const;
     /// Merges this->slices
@@ -70,7 +74,17 @@ class LayerRegion
     void process_external_surfaces();
     /// Gets the smallest fillable area
     double infill_area_threshold() const;
-    
+    //append a new nonplanar surface to the list skip if already in list
+    void append_nonplanar_surface(NonplanarSurface& surface);
+    // Projects the paths of a collection regarding the structure of a stl mesh
+    void project_nonplanar_extrusion(ExtrusionEntityCollection* collection);
+    /// Projects nonplanar surfaces downwards regarding the structure of the stl mesh.
+    void project_nonplanar_surfaces();
+    ///project a nonplanar path
+    void project_nonplanar_path(ExtrusionPath* path);
+    ///sets the z coordinates correctly for all points TODO move to generation of points
+    void correct_z_on_path(ExtrusionPath *path);
+
     private:
     /// Pointer to associated Layer
     Layer *_layer;
@@ -133,6 +147,8 @@ class Layer {
     void make_perimeters();
     /// Makes fills for all the LayerRegion
     void make_fills();
+    /// Projects nonplanar surfaces downwards regarding the structure of the stl mesh.
+    void project_nonplanar_surfaces();
     /// Determines the type of surface (top/bottombridge/bottom/internal) each region is
     void detect_surfaces_type();
     /// Processes the external surfaces

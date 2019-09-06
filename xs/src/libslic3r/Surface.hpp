@@ -11,10 +11,13 @@ namespace Slic3r {
 enum SurfaceType : uint16_t { 
     stTop            = 0b1,       /// stTop: it has nothing just on top of it
     stBottom         = 0b10,      /// stBottom: it's a surface with nothing just under it (or the base plate, or a support)
-    stInternal       = 0b100,     /// stInternal: not top nor bottom
-    stSolid          = 0b1000,    /// stSolid: modify the stInternal to say it should be at 100% infill
-    stBridge         = 0b10000,   /// stBridge: modify stBottom or stInternal to say it should be extruded as a bridge
-    stVoid           = 0b100000   /// stVoid: modify stInternal to say it should be at 0% infill
+    stBottomBridge   = 0b100,
+    stInternal       = 0b1000,     /// stInternal: not top nor bottom
+    stInternalSolid  = 0b10000,    /// stInternalSolid: modify the stInternal to say it should be at 100% infill
+    stInternalBridge = 0b100000,   /// stBridge: modify stBottom or stInternal to say it should be extruded as a bridge
+    stInternalVoid   = 0b1000000,   /// stInternalVoid: modify stInternal to say it should be at 0% infill
+    stTopNonplanar   = 0b10000000,
+    stInternalSolidNonplanar = 0b100000000,
 };
 inline SurfaceType operator|(SurfaceType a, SurfaceType b)
 {return static_cast<SurfaceType>(static_cast<uint16_t>(a) | static_cast<uint16_t>(b));}
@@ -34,14 +37,16 @@ class Surface
     unsigned short  thickness_layers;   // in layers
     double          bridge_angle;       // in radians, ccw, 0 = East, only 0+ (negative means undefined)
     unsigned short  extra_perimeters;
-    
+    float           distance_to_top;// top is 0
+
     Surface(SurfaceType _surface_type, const ExPolygon &_expolygon)
         : surface_type(_surface_type), expolygon(_expolygon),
-            thickness(-1), thickness_layers(1), bridge_angle(-1), extra_perimeters(0)
+            thickness(-1), thickness_layers(1), bridge_angle(-1), extra_perimeters(0), distance_to_top(0.0f)
         {};
     operator Polygons() const;
     double area() const;
     bool is_solid() const;
+    bool is_nonplanar() const;
     bool is_external() const;
     bool is_internal() const;
     bool is_top() const;

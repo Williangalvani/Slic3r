@@ -262,6 +262,14 @@ Layer::make_fills()
     }
 }
 
+void
+Layer::project_nonplanar_surfaces()
+{
+    FOREACH_LAYERREGION(this, it_layerm) {
+        (*it_layerm)->project_nonplanar_surfaces();
+    }
+}
+
 /// Analyzes slices of a region (SurfaceCollection slices).
 /// Each region slice (instance of Surface) is analyzed, whether it is supported or whether it is the top surface.
 /// Initially all slices are of type S_TYPE_INTERNAL.
@@ -295,6 +303,19 @@ Layer::detect_surfaces_type()
 
         const Polygons layerm_slices_surfaces = layerm.slices;
 
+        //Find mark nonplanar surfaces
+        SurfaceCollection nonplanar_surfaces;
+        for(auto& surface : layerm.nonplanar_surfaces){
+            nonplanar_surfaces.append(
+                intersection_ex(surface.horizontal_projection(),
+                union_ex(layerm_slices_surfaces)),
+                (surface.stats.max.z <= this->slice_z + this->height ? stTopNonplanar : stInternalSolidNonplanar)
+            );
+        }
+        
+        //remove non planar surfaces form all surfaces to get planar surfaces
+        Polygons planar_surfaces = diff(layerm_slices_surfaces,nonplanar_surfaces,true);
+
         // find top surfaces (difference between current surfaces
         // of current layer and upper one)
         SurfaceCollection top;
@@ -307,21 +328,22 @@ Layer::detect_surfaces_type()
             } else {
                 upper_slices = upper_layer->slices;
             }
-        
+            //difference between all surfaces and upper surfaces subtracted by nonplanar surfaces
             top.append(
                 offset2_ex(
-                    diff(layerm_slices_surfaces, upper_slices, true),
+                    diff(diff(layerm_slices_surfaces, upper_slices, true),nonplanar_surfaces,true),
                     -offs, offs
                 ),
                 stTop
             );
         } else {
-            // if no upper layer, all surfaces of this one are solid
-            // we clone surfaces because we're going to clear the slices collection
-            top = layerm.slices;
-            for (Surface &s : top.surfaces) s.surface_type = stTop;
+            // all planar surfaces are top surfaces1
+            top.append(
+                union_ex(planar_surfaces,true),
+                stTop
+            );
         }
-    
+
         // find bottom surfaces (difference between current surfaces
         // of current layer and lower one)
         SurfaceCollection bottom;
@@ -331,17 +353,17 @@ Layer::detect_surfaces_type()
             const SurfaceType surface_type_bottom =
                 (object.config.support_material.value && object.config.support_material_contact_distance.value == 0)
                 ? stBottom
-                : (stBottom | stBridge);
+                : (stBottom | stBottomBridge);
         
             // Any surface lying on the void is a true bottom bridge (an overhang)
             bottom.append(
                 offset2_ex(
-                    diff(layerm_slices_surfaces, lower_layer->slices, true),
+                    diff(diff(layerm_slices_surfaces, lower_layer->slices, true),nonplanar_surfaces,true),
                     -offs, offs
                 ),
                 surface_type_bottom
             );
-        
+
             // if user requested internal shells, we need to identify surfaces
             // lying on other slices not belonging to this region
             if (object.config.interface_shells) {
@@ -352,8 +374,12 @@ Layer::detect_surfaces_type()
                 bottom.append(
                     offset2_ex(
                         diff(
-                            intersection(layerm_slices_surfaces, lower_layer->slices), // supported
-                            lower_layerm->slices,
+                            diff(
+                                intersection(layerm_slices_surfaces, lower_layer->slices), // supported
+                                lower_layerm->slices,
+                                true
+                            ),
+                            nonplanar_surfaces,
                             true
                         ),
                         -offs, offs
@@ -370,7 +396,7 @@ Layer::detect_surfaces_type()
             // just like any other bottom surface lying on the void
             const SurfaceType surface_type_bottom =
                 (object.config.raft_layers.value > 0 && object.config.support_material_contact_distance.value > 0)
-                ? (stBottom | stBridge)
+                ? (stBottom | stBottomBridge)
                 : stBottom;
             for (Surface &s : bottom.surfaces) s.surface_type = surface_type_bottom;
         }
@@ -387,35 +413,38 @@ Layer::detect_surfaces_type()
                 stTop
             );
         }
-    
+
         // save surfaces to layer
         {
             boost::lock_guard<boost::mutex> l(layerm._slices_mutex);
             layerm.slices.clear();
             layerm.slices.append(STDMOVE(top));
             layerm.slices.append(STDMOVE(bottom));
-    
+            layerm.slices.append(STDMOVE(nonplanar_surfaces));
+
             // find internal surfaces (difference between top/bottom surfaces and others)
             {
-                Polygons topbottom = top; append_to(topbottom, (Polygons)bottom);
-    
+                Polygons solid_surfaces = top;
+                append_to(solid_surfaces, (Polygons)bottom);
+                append_to(solid_surfaces, (Polygons)nonplanar_surfaces);
+
                 layerm.slices.append(
                     // TODO: maybe we don't need offset2?
                     offset2_ex(
-                        diff(layerm_slices_surfaces, topbottom, true),
+                        diff(layerm_slices_surfaces, solid_surfaces, true),
                         -offs, offs
                     ),
                     stInternal
                 );
             }
         }
-    
+
         #ifdef SLIC3R_DEBUG
         printf("  layer %zu has %zu bottom, %zu top and %zu internal surfaces\n",
             this->id(), bottom.size(), top.size(),
             layerm.slices.size()-bottom.size()-top.size());
         #endif
-    
+
         {
             /*  Fill in layerm->fill_surfaces by trimming the layerm->slices by the cummulative layerm->fill_surfaces.
                 Note: this method should be idempotent, but fill_surfaces gets modified

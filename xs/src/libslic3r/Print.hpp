@@ -20,6 +20,8 @@
 #include "SlicingAdaptive.hpp"
 #include "LayerHeightSpline.hpp"
 #include "SupportMaterial.hpp"
+#include "NonplanarSurface.hpp"
+#include "NonplanarFacet.hpp"
 
 namespace Slic3r {
 
@@ -39,6 +41,7 @@ enum PrintStep {
 enum PrintObjectStep {
     posLayers, posSlice, posPerimeters, posDetectSurfaces,
     posPrepareInfill, posInfill, posSupportMaterial,
+    posNonplanarProjection,
 };
 
 // To be instantiated over PrintStep or PrintObjectStep enums.
@@ -91,11 +94,13 @@ class PrintObject
     std::map< size_t,std::vector<int> > region_volumes;
     PrintObjectConfig config; //< Configuration
     t_layer_height_ranges layer_height_ranges;
-    
+
     LayerHeightSpline layer_height_spline;
 
-    /// this is set to true when LayerRegion->slices is split in top/internal/bottom
-    /// so that next call to make_perimeters() performs a union() before computing loops
+    NonplanarSurfaces nonplanar_surfaces;
+
+    // this is set to true when LayerRegion->slices is split in top/internal/bottom
+    // so that next call to make_perimeters() performs a union() before computing loops
     bool typed_slices;
 
     Point3 size;           //< XYZ in scaled coordinates
@@ -148,20 +153,26 @@ class PrintObject
     const SupportLayer* get_support_layer(int idx) const { return this->support_layers.at(idx); };
     SupportLayer* add_support_layer(int id, coordf_t height, coordf_t print_z);
     void delete_support_layer(int idx);
-    
+
     // methods for handling state
     bool invalidate_state_by_config(const PrintConfigBase &config);
     bool invalidate_step(PrintObjectStep step);
     bool invalidate_all_steps();
-    
+
     bool has_support_material() const;
     void detect_surfaces_type();
+    void merge_nonplanar_surfaces();
+    void debug_svg_print();
+    bool check_nonplanar_collisions(NonplanarSurface &surface);
+    void move_nonplanar_surfaces_up();
+    void project_nonplanar_surfaces();
     void process_external_surfaces();
 
     void bridge_over_infill();
     coordf_t adjust_layer_height(coordf_t layer_height) const;
     std::vector<coordf_t> generate_object_layers(coordf_t first_layer_height);
     void _slice();
+    void find_nonplanar_surfaces();
     std::vector<ExPolygons> _slice_region(size_t region_id, std::vector<float> z, bool modifier);
 
     void _infill();
@@ -247,7 +258,7 @@ class Print
 
     Print();
     ~Print();
-    
+
     // methods for handling objects
     void clear_objects();
     PrintObject* get_object(size_t idx) { return this->objects.at(idx); };

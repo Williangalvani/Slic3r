@@ -65,10 +65,10 @@ LayerRegion::make_fill()
                 // we can only merge solid non-bridge surfaces, so discard
                 // non-solid or bridge surfaces
                 if (!surface.is_solid() || surface.is_bridge()) continue;
-                
+
                 group_attrib[i].is_solid = true;
-                group_attrib[i].fw = (surface.is_top()) ? top_solid_infill_flow.width : solid_infill_flow.width;
-                group_attrib[i].pattern = surface.is_top() ? this->region()->config.top_infill_pattern.value
+                group_attrib[i].fw = (surface.surface_type == stTop || surface.surface_type == stTopNonplanar) ? top_solid_infill_flow.width : solid_infill_flow.width;
+                group_attrib[i].pattern = (surface.surface_type == stTop || surface.surface_type == stTopNonplanar) ? this->region()->config.top_infill_pattern.value
                     : surface.is_bottom() ? this->region()->config.bottom_infill_pattern.value
                     : ipRectilinear;
             }
@@ -128,17 +128,17 @@ LayerRegion::make_fill()
             std::max(infill_flow.scaled_spacing(), solid_infill_flow.scaled_spacing()),
             top_solid_infill_flow.scaled_spacing()
         );
-        
+
         Polygons surfaces_polygons = (Polygons)surfaces;
         Polygons collapsed = diff(
             surfaces_polygons,
             offset2(surfaces_polygons, -distance_between_surfaces/2, +distance_between_surfaces/2),
             true
         );
-            
+
         Polygons to_subtract;
-        surfaces.filter_by_type((stInternal | stVoid), &to_subtract);
-                
+        surfaces.filter_by_type(stInternalVoid, &to_subtract);
+
         append_to(to_subtract, collapsed);
         surfaces.append(
             intersection_ex(
@@ -146,7 +146,7 @@ LayerRegion::make_fill()
                 to_subtract,
                 true
             ),
-            (stInternal | stSolid)
+            (stInternal | stInternalSolid)
         );
     }
 
@@ -160,18 +160,18 @@ LayerRegion::make_fill()
 
     for (Surfaces::const_iterator surface_it = surfaces.surfaces.begin();
         surface_it != surfaces.surfaces.end(); ++surface_it) {
-        
+
         const Surface &surface = *surface_it;
-        if (surface.surface_type == (stInternal | stVoid))
+        if (surface.surface_type == (stInternal | stInternalVoid))
             continue;
-        
+
         InfillPattern fill_pattern = this->region()->config.fill_pattern.value;
         double density = fill_density;
-        FlowRole role = (surface.is_top()) ? frTopSolidInfill
+        FlowRole role = (surface.surface_type == stTop || surface.surface_type == stTopNonplanar) ? frTopSolidInfill
             : surface.is_solid() ? frSolidInfill
             : frInfill;
         const bool is_bridge = this->layer()->id() > 0 && surface.is_bridge();
-        
+
         if (surface.is_solid()) {
             density = 100.;
             fill_pattern = (surface.is_top()) ? this->region()->config.top_infill_pattern.value
@@ -195,8 +195,17 @@ LayerRegion::make_fill()
                 f = std::auto_ptr<Fill>(Fill::new_from_type(ipRectilinear));
             #endif
         
+        //set fill pattern to rectilinear for all nonplanar surfaces
+        if (surface.is_nonplanar()) {
+            #if SLIC3R_CPPVER >= 11
+                f = std::unique_ptr<Fill>(Fill::new_from_type(ipRectilinear));
+            #else
+                f = std::auto_ptr<Fill>(Fill::new_from_type(ipRectilinear));
+            #endif
+        }
+            
         f->bounding_box = this->layer()->object()->bounding_box();
-        
+
         // calculate the actual flow we'll be using for this infill
         coordf_t h = (surface.thickness == -1) ? this->layer()->height : surface.thickness;
         Flow flow = this->region()->flow(
@@ -270,22 +279,22 @@ LayerRegion::make_fill()
         ExtrusionEntityCollection* coll = new ExtrusionEntityCollection();
         coll->no_sort = f->no_sort();
         this->fills.entities.push_back(coll);
-        
+
         {
             ExtrusionRole role;
             if (is_bridge) {
                 role = erBridgeInfill;
             } else if (surface.is_solid()) {
-                role = (surface.is_top()) ? erTopSolidInfill : erSolidInfill;
+                role = (surface.surface_type == stTop || surface.surface_type == stTopNonplanar) ? erTopSolidInfill : erSolidInfill;
             } else {
                 role = erInternalInfill;
             }
-            
+
             ExtrusionPath templ(role);
             templ.mm3_per_mm    = flow.mm3_per_mm();
             templ.width         = flow.width;
             templ.height        = flow.height;
-            
+
             coll->append(STDMOVE(polylines), templ);
         }
     }

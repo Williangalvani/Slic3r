@@ -3,6 +3,8 @@ branches:
   only:
   - master
   - cppgui
+  - nonplanar
+  - squashedmerged
 image: WMF 5
 init:
 - ps: 

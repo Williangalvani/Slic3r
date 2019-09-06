@@ -12,6 +12,7 @@
 #include <string>
 #include <iostream>
 #include <regex>
+#include <numeric>
 
 namespace Slic3r {
 

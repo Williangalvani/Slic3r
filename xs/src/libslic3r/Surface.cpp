@@ -16,19 +16,39 @@ Surface::area() const
 bool
 Surface::is_solid() const
 {
-    return (this->surface_type & (stTop | stBottom | stSolid | stBridge)) != 0;
+    return this->surface_type == stTop
+        || this->surface_type == stBottom
+        || this->surface_type == stBottomBridge
+        || this->surface_type == stInternalSolid
+        || this->surface_type == stInternalBridge
+        || this->surface_type == stTopNonplanar
+        || this->surface_type == stInternalSolidNonplanar;
+}
+
+bool
+Surface::is_nonplanar() const
+{
+    return this->surface_type == stTopNonplanar
+        || this->surface_type == stInternalSolidNonplanar;
 }
 
 bool
 Surface::is_external() const
 {
-    return is_top() || is_bottom();
+    return this->surface_type == stTop
+        || this->surface_type == stBottom
+        || this->surface_type == stBottomBridge
+        || this->surface_type == stTopNonplanar;
 }
 
 bool
 Surface::is_internal() const
 {
-    return (this->surface_type & stInternal) != 0;
+    return this->surface_type == stInternal
+        || this->surface_type == stInternalBridge
+        || this->surface_type == stInternalSolid
+        || this->surface_type == stInternalVoid
+        || this->surface_type == stInternalSolidNonplanar;
 }
 
 bool
@@ -46,7 +66,8 @@ Surface::is_top() const
 bool
 Surface::is_bridge() const
 {
-    return (this->surface_type & stBridge) != 0;
+    return (this->surface_type == stBottomBridge
+        || this->surface_type == stInternalBridge ) != 0;
 }
 
 }

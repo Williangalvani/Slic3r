@@ -7,32 +7,9 @@ use Config;
 use File::Spec;
 
 my %prereqs = qw(
-    Devel::CheckLib                 0
-    Encode                          0
-    Encode::Locale                  1.05
-    ExtUtils::CppGuess              0
-    ExtUtils::MakeMaker             6.80
-    ExtUtils::ParseXS               3.35
-    ExtUtils::Typemap::Basic        0
-    File::Basename                  0
-    File::Spec                      0
-    Getopt::Long                    0
-    Module::Build::WithXSpp         0.14
-    Moo                             1.003001
-    POSIX                           0
-    Scalar::Util                    0
-    Test::More                      0
-    Thread::Semaphore               0
-    IO::Scalar                      0
-    threads                         1.96
-    Time::HiRes                     0
-    Unicode::Normalize              0
 );
 my %recommends = qw(
-    Class::XSAccessor               0
-    Test::Harness                   0
-    Thread::Queue                   0
-    threads::shared                 0
+
 );
 
 my $sudo    = grep { $_ eq '--sudo' } @ARGV;
@@ -52,10 +29,6 @@ if ($gui) {
     Net::Bonjour                    0
     );
     if ($^O eq 'MSWin32') {
-        $recommends{"Win32::TieRegistry"} = 0;
-        
-        # we need an up-to-date Win32::API because older aren't thread-safe (GH #2517)
-        $prereqs{'Win32::API'} = 0.79;
     }
 } elsif ($xs_only) {
     %prereqs = %recommends = ();
